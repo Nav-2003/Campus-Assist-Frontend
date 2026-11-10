@@ -1,0 +1,202 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Manrope", sans-serif;
+  --font-sans: "Plus Jakarta Sans", sans-serif;
+
+  --color-ink: #061510;
+  --color-ink-soft: #0f2a20;
+  --color-mist: #eef6f2;
+  --color-mist-deep: #d5e8de;
+  --color-jade: #0d7a62;
+  --color-jade-deep: #095c4a;
+  --color-jade-glow: #12a884;
+  --color-stone: #2f463c;
+  --color-line: #b7d0c4;
+  --color-surface: rgba(255, 255, 255, 0.92);
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgba(18, 168, 132, 0.18), transparent 55%),
+      radial-gradient(ellipse 70% 45% at 95% 5%, rgba(13, 122, 98, 0.14), transparent 50%),
+      radial-gradient(ellipse 60% 40% at 50% 100%, rgba(184, 210, 196, 0.45), transparent 55%),
+      linear-gradient(165deg, #f7fbf9 0%, #eaf4ef 42%, #e4f0ea 100%);
+    background-attachment: fixed;
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+}
+
+@keyframes auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes auth-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mesh-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(2%, -1.5%) scale(1.04);
+  }
+}
+
+@keyframes sheen {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+@keyframes aurora-shift {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate(3%, -2%) rotate(4deg);
+    opacity: 0.75;
+  }
+}
+
+.auth-rise {
+  animation: auth-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-rise-delay-1 {
+  animation-delay: 0.1s;
+}
+
+.auth-rise-delay-2 {
+  animation-delay: 0.2s;
+}
+
+.auth-rise-delay-3 {
+  animation-delay: 0.32s;
+}
+
+.auth-fade {
+  animation: auth-fade 1s ease both;
+}
+
+.auth-mesh {
+  animation: mesh-drift 18s ease-in-out infinite;
+}
+
+.auth-btn-sheen {
+  background-image: linear-gradient(
+    110deg,
+    var(--color-jade) 0%,
+    var(--color-jade) 40%,
+    var(--color-jade-glow) 50%,
+    var(--color-jade) 60%,
+    var(--color-jade) 100%
+  );
+  background-size: 200% 100%;
+}
+
+.auth-btn-sheen:hover {
+  animation: sheen 1.4s ease;
+}
+
+.auth-field:focus-within {
+  border-color: var(--color-jade);
+  box-shadow: 0 0 0 3px rgba(13, 122, 98, 0.18);
+}
+
+.auth-panel {
+  background: var(--color-surface);
+  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+}
+
+@keyframes room-soft-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.room-card {
+  animation: room-soft-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Soft grain + light grid for premium depth */
+.app-atmosphere {
+  position: relative;
+  isolation: isolate;
+}
+
+.app-atmosphere::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.4;
+  background-image:
+    linear-gradient(rgba(6, 21, 16, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 21, 16, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 75% 65% at 50% 30%, black, transparent);
+}
+
+.app-atmosphere::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.app-orb {
+  animation: aurora-shift 16s ease-in-out infinite;
+}
+
+.app-orb-delay {
+  animation-delay: -7s;
+}

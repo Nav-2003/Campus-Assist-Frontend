@@ -1,22 +1,26 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import AuthField from '../components/auth/AuthField'
 import { useAuth } from '../context/AuthContext'
-import { CATEGORIES, URGENCY, createRoom } from '../lib/rooms'
+import { CATEGORIES, URGENCY, createRoom, editRoom, getRoom } from '../lib/rooms'
 
 const empty = {
   title: '',
   description: '',
   location: '',
   tip: '20',
-  category: 'errand',
+  categories: ['errand'],
   urgency: 'normal',
 }
 
 export default function RaiseRequest() {
   const { user, refresh } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState(empty)
+  const [searchParams] = useSearchParams()
+  const editId = searchParams.get('edit')
+  const existingRoom = editId ? getRoom(editId) : null
+  const initialForm = existingRoom ? { title: existingRoom.title, description: existingRoom.description, location: existingRoom.location, tip: String(existingRoom.tip), categories: existingRoom.categories || [existingRoom.category], urgency: existingRoom.urgency } : empty
+  const [form, setForm] = useState(initialForm)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -27,22 +31,26 @@ export default function RaiseRequest() {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (!form.categories.length) {
+      setError('Choose at least one category.')
+      return
+    }
     setSubmitting(true)
-    const result = await createRoom(user, form)
+    const result = editId ? await editRoom(editId, form) : await createRoom(user, form)
     setSubmitting(false)
     if (!result.ok) {
       setError(result.error)
       return
     }
     refresh()
-    navigate(`/rooms/${result.room.id}`)
+    navigate(`/rooms/${result.room?.id || editId}`)
   }
 
   return (
     <div className="mx-auto max-w-2xl">
       <div className="auth-rise mb-8">
         <p className="text-xs font-semibold tracking-[0.08em] text-jade uppercase">
-          New request room
+          {editId ? 'Edit request room' : 'New request room'}
         </p>
         <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.03em] text-ink sm:text-4xl">
           What do you need on campus?
@@ -55,7 +63,7 @@ export default function RaiseRequest() {
 
       <form
         onSubmit={handleSubmit}
-        className="auth-rise auth-rise-delay-1 space-y-5 rounded-3xl border border-line/80 bg-white p-6 shadow-[0_18px_50px_-34px_rgba(6,21,16,0.45)] sm:p-8"
+        className="auth-rise auth-rise-delay-1 space-y-5 rounded-3xl border border-line/80 bg-white p-4 shadow-[0_18px_50px_-34px_rgba(6,21,16,0.45)] sm:p-8"
         noValidate
       >
         <AuthField
@@ -90,15 +98,21 @@ export default function RaiseRequest() {
         />
 
         <div>
-          <span className="mb-2 block text-sm font-bold text-ink">Category</span>
+          <span className="mb-1 block text-sm font-bold text-ink">Categories</span>
+          <span className="mb-2 block text-xs font-medium text-stone">Choose all that fit · {form.categories.length} selected</span>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {CATEGORIES.map((c) => (
               <button
                 key={c.id}
                 type="button"
-                onClick={() => update('category', c.id)}
+                onClick={() => {
+                  const selected = form.categories.includes(c.id)
+                    ? form.categories.filter((id) => id !== c.id)
+                    : [...form.categories, c.id]
+                  update('categories', selected)
+                }}
                 className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold transition-colors ${
-                  form.category === c.id
+                  form.categories.includes(c.id)
                     ? 'border-jade bg-jade/10 text-jade-deep'
                     : 'border-line text-stone hover:border-jade/40 hover:text-ink'
                 }`}

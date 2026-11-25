@@ -1,7 +1,8 @@
-import { DEMO_ACCOUNTS, getAccessToken, getUserById, updateUserStats } from './auth'
+import { authenticatedFetch, DEMO_ACCOUNTS, getAccessToken, getUserById, updateUserStats } from './auth'
 import { readJson, writeJson, uid } from './storage'
 
 const ROOMS_KEY = 'ca_rooms'
+const ROOM_VIEWS_KEY = 'ca_room_views'
 const DEMO_ROOM_ID = 'room_demo_print'
 
 export const CATEGORIES = [
@@ -32,6 +33,10 @@ export function listRooms() {
   return getRooms()
     .slice()
     .sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+export function listRoomViews() {
+  return readJson(ROOM_VIEWS_KEY, {})
 }
 
 /** Seeds one open lobby room so explore accounts have something to join. */
@@ -93,13 +98,17 @@ export function getRoom(id) {
 function normalizeApiRoom(apiRoom) {
   const owner = apiRoom.createdBy || {}
   const ownerId = String(owner._id || owner.id || apiRoom.createdBy || '')
-  const category = CATEGORIES.find((item) => item.label === apiRoom.category)?.id || 'other'
+  const categoryLabels = Array.isArray(apiRoom.categories) && apiRoom.categories.length ? apiRoom.categories : [apiRoom.category]
+  const categories = categoryLabels.map((label) => CATEGORIES.find((item) => item.label === label)?.id).filter(Boolean)
+  const category = categories[0] || CATEGORIES.find((item) => item.label === apiRoom.category)?.id || 'other'
   const urgency = URGENCY.find((item) => item.label === apiRoom.urgency)?.id || 'normal'
   const statusMap = {
     Open: 'open',
-    'In Progress': 'active',
-    Completed: 'fulfilled',
-    Cancelled: 'closed',
+    Joined: 'joined',
+    Coming: 'coming',
+    Parchasing: 'parchasing',
+    Completed: 'completed',
+    Cancelled: 'cancelled',
   }
   const createdAt = apiRoom.createdAt ? new Date(apiRoom.createdAt).getTime() : Date.now()
 
@@ -111,6 +120,7 @@ function normalizeApiRoom(apiRoom) {
     location: apiRoom.address,
     tip: apiRoom.tip || 0,
     category,
+    categories: categories.length ? categories : [category],
     urgency,
     status: statusMap[apiRoom.status] || 'open',
     locked: false,
@@ -119,9 +129,11 @@ function normalizeApiRoom(apiRoom) {
         userId: ownerId,
         name: owner.name || 'Student',
         email: owner.email || '',
+        phoneNo: owner.phoneNo || '',
         role: 'owner',
         joinedAt: createdAt,
       },
+      ...(apiRoom.helpBy ? [{ userId: String(apiRoom.helpBy._id || apiRoom.helpBy), name: apiRoom.helpBy.name || 'Helper', email: apiRoom.helpBy.email || '', phoneNo: apiRoom.helpBy.phoneNo || '', stats: apiRoom.helpBy.stats || {}, role: 'helper', joinedAt: createdAt }] : []),
     ],
     bannedIds: [],
     messages: [
@@ -133,9 +145,11 @@ function normalizeApiRoom(apiRoom) {
         type: 'system',
         createdAt,
       },
+      ...(apiRoom.messages || []).map((m, i) => ({ id: String(m._id || i), userId: String(m.sender?._id || m.sender || ''), name: m.name, text: m.text, type: 'chat', createdAt: new Date(m.createdAt).getTime() })),
     ],
     createdAt,
     updatedAt: apiRoom.updatedAt ? new Date(apiRoom.updatedAt).getTime() : createdAt,
+    review: apiRoom.review?.rating ? { rating: apiRoom.review.rating, feedback: apiRoom.review.feedback || '', createdAt: apiRoom.review.createdAt ? new Date(apiRoom.review.createdAt).getTime() : null } : null,
   }
 }
 
@@ -144,21 +158,127 @@ export async function fetchRooms() {
   if (!token) return { ok: false, error: 'Your session has expired. Please sign in again.' }
 
   try {
-    const response = await fetch('/api/room/fetch/fetchRoomData', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const response = await authenticatedFetch('/api/room/fetch/fetchRoomData')
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {
       return { ok: false, error: data.message || 'Could not load rooms.' }
     }
 
     const rooms = Array.isArray(data.rooms) ? data.rooms.map(normalizeApiRoom) : []
+    const roomViews = Object.fromEntries(Object.entries(data.roomViews || {}).map(([key, items]) => [key, Array.isArray(items) ? items.map(normalizeApiRoom) : []]))
     saveRooms(rooms)
+    writeJson(ROOM_VIEWS_KEY, roomViews)
     return { ok: true, rooms }
   } catch (error) {
     console.error('Fetch rooms request failed:', error)
     return { ok: false, error: 'Unable to reach the server. Please try again.' }
   }
+}
+
+function normalizeRoom(apiRoom) {
+  return normalizeApiRoom(apiRoom)
+}
+
+async function roomRequest(roomId, path, { method = 'PATCH', body } = {}) {
+  const token = getAccessToken()
+  if (!token) return { ok: false, error: 'Your session has expired. Please sign in again.' }
+  try {
+    const response = await authenticatedFetch(`/api/room/joinroom/${roomId}${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) return { ok: false, error: data.message || 'Could not update this room.' }
+    if (data.room) {
+      const room = normalizeRoom(data.room)
+      saveRooms([room, ...getRooms().filter((item) => item.id !== room.id)])
+      await fetchRooms()
+      return { ok: true, room }
+    }
+    if (method === 'DELETE') {
+      saveRooms(getRooms().filter((item) => item.id !== roomId))
+      await fetchRooms()
+    }
+    return { ok: true }
+  } catch (error) {
+    console.error('Room request failed:', error)
+    return { ok: false, error: 'Unable to reach the server. Please try again.' }
+  }
+}
+
+export async function joinRoom(roomId) {
+  const token = getAccessToken()
+  try {
+    const response = await authenticatedFetch('/api/room/joinroom/joinAndHelp', {
+      method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) return { ok: false, error: data.message || 'Could not join this room.' }
+    const room = normalizeRoom(data.room)
+    saveRooms([room, ...getRooms().filter((item) => item.id !== room.id)])
+    await fetchRooms()
+    return { ok: true, room }
+  } catch { return { ok: false, error: 'Unable to reach the server. Please try again.' } }
+}
+
+export function updateRoomStatus(roomId, status) {
+  return roomRequest(roomId, '/status', { body: { status } })
+}
+
+export function postRoomMessage(roomId, text) {
+  return roomRequest(roomId, '/messages', { method: 'POST', body: { text } })
+}
+
+export function submitRoomReview(roomId, rating, feedback) {
+  return roomRequest(roomId, '/review', { method: 'POST', body: { rating, feedback } })
+}
+
+export async function fetchTicketTracking(roomId) {
+  try {
+    const response = await authenticatedFetch(`/api/room/joinroom/${roomId}/tracking`)
+    const data = await response.json().catch(() => ({}))
+    return response.ok ? { ok: true, tracking: data.tracking || [] } : { ok: false, error: data.message || 'Could not load live tracking.' }
+  } catch {
+    return { ok: false, error: 'Unable to load live tracking.' }
+  }
+}
+
+export async function shareTicketLocation(roomId, location) {
+  try {
+    const response = await authenticatedFetch(`/api/room/joinroom/${roomId}/tracking`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(location),
+    })
+    const data = await response.json().catch(() => ({}))
+    return response.ok ? { ok: true } : { ok: false, error: data.message || `Could not share your location (HTTP ${response.status}).` }
+  } catch {
+    return { ok: false, error: 'Unable to share your location.' }
+  }
+}
+
+export async function stopTicketLocation(roomId) {
+  try {
+    const response = await authenticatedFetch(`/api/room/joinroom/${roomId}/tracking`, { method: 'DELETE' })
+    const data = await response.json().catch(() => ({}))
+    return response.ok ? { ok: true } : { ok: false, error: data.message || 'Could not stop location sharing.' }
+  } catch {
+    return { ok: false, error: 'Unable to stop location sharing.' }
+  }
+}
+
+export function deleteRoom(roomId) {
+  return roomRequest(roomId, '', { method: 'DELETE' })
+}
+
+export async function editRoom(roomId, payload) {
+  const selected = Array.isArray(payload.categories) && payload.categories.length ? payload.categories : [payload.category]
+  const categoryLabels = selected.map((id) => CATEGORIES.find((item) => item.id === id)?.label).filter(Boolean)
+  const category = categoryLabels[0] || 'Other favour'
+  const urgency = URGENCY.find((item) => item.id === payload.urgency)?.label || 'Soon'
+  return roomRequest(roomId, '', { method: 'PATCH', body: { title: payload.title, description: payload.description, address: payload.location, tip: Number(payload.tip) || 0, category, categories: categoryLabels, urgency } })
 }
 
 function patchRoom(id, updater) {
@@ -198,9 +318,11 @@ export async function createRoom(owner, payload) {
   const description = String(payload.description || '').trim()
   const location = String(payload.location || '').trim()
   const tip = Number(payload.tip) || 0
-  const category = payload.category || 'other'
+  const categories = Array.isArray(payload.categories) && payload.categories.length ? payload.categories : [payload.category || 'other']
+  const category = categories[0]
   const urgency = payload.urgency || 'normal'
   const categoryLabel = CATEGORIES.find((item) => item.id === category)?.label || 'Other favour'
+  const categoryLabels = categories.map((id) => CATEGORIES.find((item) => item.id === id)?.label).filter(Boolean)
 
   if (!title) return { ok: false, error: 'Give your request a short title.' }
   if (!description) return { ok: false, error: 'Describe what you need.' }
@@ -212,7 +334,7 @@ export async function createRoom(owner, payload) {
   const urgencyLabel = URGENCY.find((item) => item.id === urgency)?.label || 'Soon'
 
   try {
-    const response = await fetch('/api/room/createRoom/createRoom', {
+    const response = await authenticatedFetch('/api/room/createRoom/createRoom', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -223,6 +345,7 @@ export async function createRoom(owner, payload) {
         description,
         address: location,
         category: categoryLabel,
+        categories: categoryLabels,
         tip,
         urgency: urgencyLabel,
       }),
@@ -246,6 +369,7 @@ export async function createRoom(owner, payload) {
       location: apiRoom.address || location,
       tip: apiRoom.tip ?? tip,
       category: roomCategory,
+      categories: categoryLabels,
       urgency,
       status: 'open',
       locked: false,
@@ -262,6 +386,8 @@ export async function createRoom(owner, payload) {
       points: (stats.points || 0) + 5,
     }))
 
+    await fetchRooms()
+
     return { ok: true, room }
   } catch (error) {
     console.error('Create room request failed:', error)
@@ -269,7 +395,7 @@ export async function createRoom(owner, payload) {
   }
 }
 
-export function joinRoom(roomId, user) {
+export function legacyLocalJoinRoom(roomId, user) {
   return patchRoom(roomId, (room) => {
     if (room.status === 'closed' || room.status === 'fulfilled') {
       return { ok: false, error: 'This request is no longer open.' }
@@ -385,7 +511,7 @@ export function closeRoom(roomId, ownerId, asFulfilled = false) {
         updateUserStats(h.userId, (stats) => ({
           helped: (stats.helped || 0) + 1,
           tipsEarned: (stats.tipsEarned || 0) + (room.tip || 0),
-          points: (stats.points || 0) + 20 + Math.round((room.tip || 0) / 2),
+          points: (stats.points || 0) + 20,
         }))
       })
       updateUserStats(ownerId, (stats) => ({
@@ -466,12 +592,11 @@ export function statusLabel(status) {
   switch (status) {
     case 'open':
       return 'Open'
-    case 'active':
-      return 'Live'
-    case 'fulfilled':
-      return 'Fulfilled'
-    case 'closed':
-      return 'Closed'
+    case 'joined': return 'Joined'
+    case 'coming': return 'Coming'
+    case 'parchasing': return 'Parchasing'
+    case 'completed': return 'Completed'
+    case 'cancelled': return 'Cancelled'
     default:
       return status
   }

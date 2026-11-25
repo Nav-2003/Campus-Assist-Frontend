@@ -8,21 +8,21 @@ import { CATEGORIES } from '../lib/rooms'
 const FILTERS = [
   { id: 'live', label: 'Live now' },
   { id: 'mine', label: 'My rooms' },
-  { id: 'helping', label: 'Joined' },
-  { id: 'all', label: 'All' },
+  { id: 'helping', label: 'Helping' },
+  { id: 'helpedBy', label: 'Helped by' },
 ]
 
 export default function Dashboard() {
   const { user } = useAuth()
-  const { rooms } = useRooms()
+  const { rooms, views: roomViews } = useRooms()
   const [filter, setFilter] = useState('live')
   const [category, setCategory] = useState('all')
   const [query, setQuery] = useState('')
 
   const stats = useMemo(() => {
-    const live = rooms.filter((r) => r.status === 'open' || r.status === 'active')
+    const live = rooms.filter((r) => r.status === 'open')
     const helpers = new Set()
-    live.forEach((r) => r.members.forEach((m) => helpers.add(m.userId)))
+    live.forEach((r) => r.members.filter((m) => m.role === 'helper').forEach((m) => helpers.add(m.userId)))
     return {
       live: live.length,
       helpers: helpers.size,
@@ -32,16 +32,18 @@ export default function Dashboard() {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return rooms.filter((room) => {
-      if (filter === 'live' && !['open', 'active'].includes(room.status)) return false
-      if (filter === 'mine' && room.ownerId !== user.id) return false
+    const sourceRooms = Object.hasOwn(roomViews, filter) ? roomViews[filter] : rooms
+    return sourceRooms.filter((room) => {
+      if (filter === 'live' && room.status !== 'open') return false
+      if (filter === 'mine' && (room.ownerId !== user.id || room.status !== 'open')) return false
       if (
         filter === 'helping' &&
-        !room.members.some((m) => m.userId === user.id && m.role === 'helper')
+        (room.status === 'completed' || !room.members.some((m) => m.userId === user.id && m.role === 'helper'))
       ) {
         return false
       }
-      if (category !== 'all' && room.category !== category) return false
+      if (filter === 'helpedBy' && (room.status === 'completed' || room.ownerId !== user.id || !room.members.some((member) => member.role === 'helper'))) return false
+      if (category !== 'all' && room.category !== category && !room.categories?.includes(category)) return false
       if (!q) return true
       return (
         room.title.toLowerCase().includes(q) ||
@@ -49,11 +51,11 @@ export default function Dashboard() {
         room.location.toLowerCase().includes(q)
       )
     })
-  }, [rooms, filter, category, query, user.id])
+  }, [rooms, roomViews, filter, category, query, user.id])
 
   return (
-    <div className="space-y-8">
-      <section className="auth-rise relative overflow-hidden rounded-3xl border border-white/10 bg-ink px-6 py-8 text-white shadow-[0_30px_80px_-40px_rgba(6,21,16,0.65)] sm:px-8">
+    <div className="space-y-6 sm:space-y-8">
+      <section className="auth-rise relative overflow-hidden rounded-3xl border border-white/10 bg-ink px-4 py-6 text-white shadow-[0_30px_80px_-40px_rgba(6,21,16,0.65)] sm:px-8 sm:py-8">
         <div
           className="pointer-events-none absolute inset-0 opacity-70"
           aria-hidden
@@ -75,20 +77,20 @@ export default function Dashboard() {
           </div>
           <Link
             to="/raise"
-            className="auth-btn-sheen inline-flex shrink-0 items-center justify-center rounded-xl bg-jade px-5 py-3.5 text-sm font-semibold text-white transition-[transform,opacity] hover:bg-jade-deep active:scale-[0.985]"
+            className="auth-btn-sheen inline-flex min-h-12 w-full shrink-0 items-center justify-center rounded-xl bg-jade px-5 py-3.5 text-sm font-semibold text-white transition-[transform,opacity] hover:bg-jade-deep active:scale-[0.985] lg:w-auto"
           >
             Raise a request
           </Link>
         </div>
 
-        <div className="relative mt-8 grid grid-cols-3 gap-3 sm:max-w-lg">
+        <div className="relative mt-6 grid grid-cols-3 gap-2 sm:mt-8 sm:max-w-lg sm:gap-3">
           <Stat label="Live rooms" value={stats.live} />
           <Stat label="Students in" value={stats.helpers} />
           <Stat label="Tips pool" value={`₹${stats.tips}`} />
         </div>
       </section>
 
-      <section className="auth-rise auth-rise-delay-1 space-y-4">
+      <section className="auth-rise auth-rise-delay-1 space-y-3 sm:space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2">
             {FILTERS.map((item) => (
@@ -96,7 +98,7 @@ export default function Dashboard() {
                 key={item.id}
                 type="button"
                 onClick={() => setFilter(item.id)}
-                className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
+                className={`min-h-11 rounded-xl px-3 py-2 text-xs font-semibold transition-colors sm:px-3.5 sm:text-sm ${
                   filter === item.id
                     ? 'bg-ink text-white'
                     : 'border border-line bg-white text-stone hover:text-ink'
@@ -115,7 +117,7 @@ export default function Dashboard() {
           />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex snap-x gap-2 overflow-x-auto pb-2 [scrollbar-width:thin]">
           <Chip
             active={category === 'all'}
             onClick={() => setCategory('all')}
@@ -183,7 +185,7 @@ function Chip({ active, onClick, label }) {
     <button
       type="button"
       onClick={onClick}
-      className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
+      className={`min-h-10 shrink-0 snap-start rounded-full px-3.5 py-2 text-xs font-bold transition-colors ${
         active
           ? 'bg-jade text-white'
           : 'border border-line bg-white text-stone hover:text-ink'

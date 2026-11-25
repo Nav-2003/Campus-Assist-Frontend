@@ -7,9 +7,73 @@ const ACCESS_TOKEN_KEY = 'ca_access_token'
 const REFRESH_TOKEN_KEY = 'ca_refresh_token'
 const SIGN_IN_URL = '/api/auth/signIn/userSignIn'
 const SIGN_UP_URL = '/api/auth/signUp/userSignUp'
+const REFRESH_URL = '/api/auth/signIn/refresh'
+const SEND_OTP_URL = '/api/send_otp/sendOtp'
+const VERIFY_OTP_URL = '/api/verify_otp/verifyOtp'
+const FORGET_PASSWORD_URL = '/api/forget/forgetPassword'
+let refreshInFlight = null
 
 export function getAccessToken() {
   return localStorage.getItem(ACCESS_TOKEN_KEY)
+}
+
+async function refreshAccessToken() {
+  if (refreshInFlight) return refreshInFlight
+  refreshInFlight = (async () => {
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
+    if (!refreshToken) return false
+    try {
+      const response = await fetch(REFRESH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data.accessToken || !data.refreshToken) {
+        clearSession()
+        return false
+      }
+      localStorage.setItem(ACCESS_TOKEN_KEY, data.accessToken)
+      localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken)
+      if (data.user) syncApiUser({ ...data.user, id: data.user.id || data.user._id })
+      return true
+    } catch {
+      return false
+    } finally {
+      refreshInFlight = null
+    }
+  })()
+  return refreshInFlight
+}
+
+export async function authenticatedFetch(url, options = {}) {
+  const send = () => {
+    const headers = new Headers(options.headers || {})
+    const token = getAccessToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    return fetch(url, { ...options, headers })
+  }
+  let response = await send()
+  if (response.status === 401 && await refreshAccessToken()) {
+    response = await send()
+    if (response.status === 401) clearSession()
+  }
+  return response
+}
+
+export async function fetchProfile() {
+  try {
+    const response = await authenticatedFetch('/api/auth/signIn/me')
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) return { ok: false, error: data.message || 'Could not load profile.' }
+    const user = { ...data.user, id: data.user.id || data.user._id }
+    syncApiUser(user)
+    const session = readActiveSession()
+    if (session?.id === user.id) setSession(user, session.remember !== false)
+    return { ok: true, user }
+  } catch {
+    return { ok: false, error: 'Unable to reach the server.' }
+  }
 }
 
 export const DEMO_ACCOUNTS = [
@@ -45,12 +109,14 @@ function syncApiUser(user) {
     name: user.name,
     email: user.email,
     phoneNo: user.phoneNo,
-    stats: existing >= 0 ? users[existing].stats : {
+    stats: user.stats || (existing >= 0 ? users[existing].stats : {
       helped: 0,
       requested: 0,
       tipsEarned: 0,
       points: 40,
-    },
+      coins: 0,
+      completedJobs: 0,
+    }),
   }
 
   if (existing >= 0) {
@@ -98,6 +164,54 @@ async function requestAuth(url, payload) {
       ok: false,
       error: 'Unable to reach the server. Please try again.',
     }
+  }
+}
+
+async function requestOtp(url, payload) {
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await response.json().catch(() => ({}))
+    return response.ok
+      ? { ok: true, message: data.message }
+      : { ok: false, error: data.message || 'Email verification failed.' }
+  } catch {
+    return { ok: false, error: 'Unable to reach the server. Please try again.' }
+  }
+}
+
+export async function sendEmailOtp(email) {
+  const cleanEmail = String(email).trim().toLowerCase()
+  if (!isNitEmail(cleanEmail)) return { ok: false, error: 'Use your official @nitjsr.ac.in email.' }
+  return requestOtp(SEND_OTP_URL, { email: cleanEmail })
+}
+
+export async function verifyEmailOtp(email, otp) {
+  const cleanEmail = String(email).trim().toLowerCase()
+  if (!isNitEmail(cleanEmail)) return { ok: false, error: 'Use your official @nitjsr.ac.in email.' }
+  if (!/^\d{6}$/.test(String(otp).trim())) return { ok: false, error: 'Enter the six digit code from your email.' }
+  return requestOtp(VERIFY_OTP_URL, { email: cleanEmail, otp: String(otp).trim() })
+}
+
+export async function resetPassword(email, password) {
+  const cleanEmail = String(email).trim().toLowerCase()
+  if (!isNitEmail(cleanEmail)) return { ok: false, error: 'Use your official @nitjsr.ac.in email.' }
+  if (String(password).length < 8) return { ok: false, error: 'Password must be at least 8 characters.' }
+  try {
+    const response = await fetch(FORGET_PASSWORD_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, password }),
+    })
+    const data = await response.json().catch(() => ({}))
+    return response.ok
+      ? { ok: true, message: data.message }
+      : { ok: false, error: data.message || 'Could not update your password.' }
+  } catch {
+    return { ok: false, error: 'Unable to reach the server. Please try again.' }
   }
 }
 

@@ -121,12 +121,13 @@ export default function SignIn() {
             />
             Remember me
           </label>
-          <button
-            type="button"
+          <Link
+            to="/forgot-password"
+            state={{ email }}
             className="text-sm font-medium text-jade transition-colors hover:text-jade-deep"
           >
             Forgot password?
-          </button>
+          </Link>
         </div>
 
         {formError ? (

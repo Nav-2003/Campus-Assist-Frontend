@@ -76,7 +76,7 @@ export default function AppShell() {
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold text-ink">{user?.name}</p>
               <p className="text-xs font-medium text-stone">
-                {user?.stats?.points ?? 0} assist pts
+                {user?.stats?.points ?? 0} community pts
               </p>
             </div>
             <div className="flex size-10 items-center justify-center rounded-full bg-ink text-sm font-semibold text-jade-glow">
@@ -84,32 +84,30 @@ export default function AppShell() {
             </div>
             <button
               type="button"
+              aria-label="Sign out"
+              title="Sign out"
               onClick={handleSignOut}
               className="rounded-lg border border-line/80 bg-white/60 px-3 py-2 text-xs font-semibold text-stone transition-colors hover:border-jade hover:text-jade-deep"
             >
-              Out
+              <span className="hidden sm:inline">Sign out</span><span className="sm:hidden" aria-hidden="true">↗</span>
             </button>
           </div>
         </div>
 
-        <nav className="flex gap-1 overflow-x-auto border-t border-line/40 px-4 py-2 md:hidden">
-          {nav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                `shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                  isActive ? 'bg-jade/10 text-jade-deep' : 'text-stone'
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+      <nav aria-label="Main navigation" className="fixed inset-x-0 bottom-0 z-50 border-t border-line/70 bg-white/90 px-3 pt-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] shadow-[0_-12px_36px_-28px_rgba(6,21,16,0.45)] backdrop-blur-xl md:hidden">
+        <div className="mx-auto grid max-w-md grid-cols-3 gap-2">
+          {nav.map((item, index) => (
+            <NavLink key={item.to} to={item.to} className={({ isActive }) => `flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-[0.68rem] font-bold transition-colors ${isActive ? 'bg-jade/10 text-jade-deep' : 'text-stone'}`}>
+              <span className="text-base leading-none" aria-hidden="true">{['⌂', '+', '◉'][index]}</span>
+              <span>{item.label === 'Raise request' ? 'Raise' : item.label}</span>
+            </NavLink>
+          ))}
+        </div>
+      </nav>
+
+      <main className="relative z-10 mx-auto max-w-6xl px-3 py-5 pb-24 sm:px-6 sm:py-10 sm:pb-10">
         <Outlet />
       </main>
     </div>

@@ -4,6 +4,7 @@ import AuthLayout from '../components/auth/AuthLayout'
 import AuthField from '../components/auth/AuthField'
 import { useAuth } from '../context/AuthContext'
 import { isNitEmail, nitEmailHint } from '../lib/email'
+import { sendEmailOtp, verifyEmailOtp } from '../lib/auth'
 
 export default function SignUp() {
   const { signUp, isAuthenticated } = useAuth()
@@ -18,6 +19,11 @@ export default function SignUp() {
   const [submitting, setSubmitting] = useState(false)
   const [emailError, setEmailError] = useState('')
   const [formError, setFormError] = useState('')
+  const [otp, setOtp] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
+  const [verifiedEmail, setVerifiedEmail] = useState('')
+  const [otpBusy, setOtpBusy] = useState(false)
+  const [otpMessage, setOtpMessage] = useState('')
 
   const strength = useMemo(() => scorePassword(password), [password])
 
@@ -31,6 +37,10 @@ export default function SignUp() {
       setEmailError(nitEmailHint())
       return
     }
+    if (verifiedEmail !== email.trim().toLowerCase()) {
+      setFormError('Verify your email address before creating your account.')
+      return
+    }
     if (!agree || password !== confirm) return
     setEmailError('')
     setFormError('')
@@ -42,6 +52,37 @@ export default function SignUp() {
       return
     }
     navigate('/dashboard', { replace: true })
+  }
+
+  async function handleSendOtp() {
+    if (!isNitEmail(email)) {
+      setEmailError(nitEmailHint())
+      return
+    }
+    setOtpBusy(true)
+    setOtpMessage('')
+    setFormError('')
+    const result = await sendEmailOtp(email)
+    setOtpBusy(false)
+    if (!result.ok) {
+      setOtpMessage(result.error)
+      return
+    }
+    setOtpSent(true)
+    setOtpMessage('Code sent. Check your inbox; it is valid for 5 minutes.')
+  }
+
+  async function handleVerifyOtp() {
+    setOtpBusy(true)
+    setOtpMessage('')
+    const result = await verifyEmailOtp(email, otp)
+    setOtpBusy(false)
+    if (!result.ok) {
+      setOtpMessage(result.error)
+      return
+    }
+    setVerifiedEmail(email.trim().toLowerCase())
+    setOtpMessage('Email verified successfully.')
   }
 
   return (
@@ -90,6 +131,10 @@ export default function SignUp() {
             value={email}
             onChange={(e) => {
               setEmail(e.target.value)
+              setVerifiedEmail('')
+              setOtpSent(false)
+              setOtp('')
+              setOtpMessage('')
               if (emailError) setEmailError('')
               if (formError) setFormError('')
             }}
@@ -103,6 +148,43 @@ export default function SignUp() {
               Must end with @nitjsr.ac.in
             </p>
           )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleSendOtp}
+              disabled={otpBusy || verifiedEmail === email.trim().toLowerCase()}
+              className="rounded-lg border border-jade px-3 py-2 text-sm font-semibold text-jade hover:bg-jade/5 disabled:opacity-55"
+            >
+              {otpBusy ? 'Please wait…' : otpSent ? 'Resend code' : 'Send verification code'}
+            </button>
+          </div>
+          {otpSent && verifiedEmail !== email.trim().toLowerCase() ? (
+            <div className="mt-3 flex gap-2">
+              <input
+                aria-label="Email verification code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="6 digit code"
+                className="min-w-0 flex-1 rounded-xl border border-line px-4 py-3 text-sm outline-none focus:border-jade"
+              />
+              <button
+                type="button"
+                onClick={handleVerifyOtp}
+                disabled={otpBusy || otp.length !== 6}
+                className="rounded-xl bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-55"
+              >
+                Verify
+              </button>
+            </div>
+          ) : null}
+          {otpMessage ? (
+            <p className={`mt-2 text-sm ${verifiedEmail === email.trim().toLowerCase() ? 'text-jade-deep' : 'text-stone'}`} role="status">
+              {otpMessage}
+            </p>
+          ) : null}
         </div>
 
         <AuthField
@@ -183,10 +265,10 @@ export default function SignUp() {
 
         <button
           type="submit"
-          disabled={submitting || !agree || (confirm && password !== confirm)}
+          disabled={submitting || !agree || (confirm && password !== confirm) || verifiedEmail !== email.trim().toLowerCase()}
           className="auth-btn-sheen mt-2 flex w-full items-center justify-center rounded-xl bg-jade px-4 py-3.5 text-sm font-semibold tracking-wide text-white transition-[transform,opacity] duration-200 hover:bg-jade-deep active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-55"
         >
-          {submitting ? 'Creating account…' : 'Create account'}
+          {submitting ? 'Creating account…' : verifiedEmail !== email.trim().toLowerCase() ? 'Verify email to continue' : 'Create account'}
         </button>
       </form>
     </AuthLayout>

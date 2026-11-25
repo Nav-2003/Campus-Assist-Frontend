@@ -5,6 +5,18 @@ const USERS_KEY = 'ca_users'
 const SESSION_KEY = 'ca_session'
 const ACCESS_TOKEN_KEY = 'ca_access_token'
 const REFRESH_TOKEN_KEY = 'ca_refresh_token'
+const DEFAULT_API_BASE_URL = import.meta.env.DEV ? '' : 'http://13.233.158.137:3000'
+export const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, '')
+
+function apiUrl(path) {
+  if (/^https?:\/\//i.test(path)) return path
+  return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
+}
+
+function apiFetch(path, options) {
+  return fetch(apiUrl(path), options)
+}
+
 const SIGN_IN_URL = '/api/auth/signIn/userSignIn'
 const SIGN_UP_URL = '/api/auth/signUp/userSignUp'
 const REFRESH_URL = '/api/auth/signIn/refresh'
@@ -23,7 +35,7 @@ async function refreshAccessToken() {
     const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
     if (!refreshToken) return false
     try {
-      const response = await fetch(REFRESH_URL, {
+      const response = await apiFetch(REFRESH_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
@@ -51,7 +63,7 @@ export async function authenticatedFetch(url, options = {}) {
     const headers = new Headers(options.headers || {})
     const token = getAccessToken()
     if (token) headers.set('Authorization', `Bearer ${token}`)
-    return fetch(url, { ...options, headers })
+    return apiFetch(url, { ...options, headers })
   }
   let response = await send()
   if (response.status === 401 && await refreshAccessToken()) {
@@ -129,7 +141,7 @@ function syncApiUser(user) {
 
 async function requestAuth(url, payload) {
   try {
-    const response = await fetch(url, {
+    const response = await apiFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -169,7 +181,7 @@ async function requestAuth(url, payload) {
 
 async function requestOtp(url, payload) {
   try {
-    const response = await fetch(url, {
+    const response = await apiFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -201,7 +213,7 @@ export async function resetPassword(email, password) {
   if (!isNitEmail(cleanEmail)) return { ok: false, error: 'Use your official @nitjsr.ac.in email.' }
   if (String(password).length < 8) return { ok: false, error: 'Password must be at least 8 characters.' }
   try {
-    const response = await fetch(FORGET_PASSWORD_URL, {
+    const response = await apiFetch(FORGET_PASSWORD_URL, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: cleanEmail, password }),

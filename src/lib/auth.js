@@ -5,7 +5,7 @@ const USERS_KEY = 'ca_users'
 const SESSION_KEY = 'ca_session'
 const ACCESS_TOKEN_KEY = 'ca_access_token'
 const REFRESH_TOKEN_KEY = 'ca_refresh_token'
-const DEFAULT_API_BASE_URL = import.meta.env.DEV ? '' : 'http://13.233.158.137:3000'
+const DEFAULT_API_BASE_URL = import.meta.env.DEV ? '' : 'http://localservices.publicvm.com:3000'
 export const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, '')
 
 function apiUrl(path) {
